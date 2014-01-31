@@ -36,7 +36,7 @@ func main() {
 	splitFiles := flag.String("split-files", "", "Write generated DataBursts to (<count>/<burst-len>) files, named numerically using the value of this argument as the prefix.")
 
 	flag.Usage = func() {
-		helpMessage := "bletchley_framegen will generate random DataFrames for testing purposes. By default, it will write them to stdout.\n\n" +
+		helpMessage := "framegen will generate random DataFrames for testing purposes. By default, it will write them to stdout.\n\n" +
 			fmt.Sprintf("Usage: %s [options]\n\n", os.Args[0]) +
 			"Options:\n\n"
 		fmt.Fprintf(os.Stderr, helpMessage)

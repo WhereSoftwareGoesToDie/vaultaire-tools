@@ -32,7 +32,7 @@ func main() {
 	json := flag.Bool("json", false, "Output frames in JSON")
 
 	flag.Usage = func() {
-		helpMessage := "framefelid will accept a stream of DataFrames on stdin and print a textual representation to stdout." +
+		helpMessage := "framecat will accept a stream of DataFrames on stdin and print a textual representation to stdout." +
 			fmt.Sprintf("Usage: %s [options]\n\n", os.Args[0]) +
 			"Options:\n\n"
 		fmt.Fprintf(os.Stderr, helpMessage)
