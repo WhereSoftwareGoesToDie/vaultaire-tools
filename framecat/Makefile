@@ -10,7 +10,7 @@ deps:
 	go get
 
 clean:
-	rm -f bletchley_framecat
+	rm -f framecat
 
 check:
 	go test

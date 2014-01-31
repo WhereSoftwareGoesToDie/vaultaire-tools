@@ -10,7 +10,7 @@ deps:
 	go get
 
 clean:
-	rm -f bletchley_framegen
+	rm -f framegen
 
 check:
 	go test
