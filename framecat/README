@@ -1,0 +1,3 @@
+Clone of davidb's framecat, just prints each frame in a dataframe file.
+Originally a test of the protobuf implementation, now does other useful
+things like JSON dumps.
