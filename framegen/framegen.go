@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/anchor/bletchley/dataframe"
-	"log"
 	"os"
 )
 
@@ -58,7 +57,7 @@ func main() {
 		if !*burstPack {
 			bytes, err := dataframe.MarshalDataFrame(frame)
 			if err != nil {
-				log.Printf("Error marshalling frame %v: %v\n", frame, err)
+				fmt.Printf("Error marshalling frame %v: %v\n", frame, err)
 			} else {
 				os.Stdout.Write(bytes)
 			}
@@ -68,12 +67,13 @@ func main() {
 			if burstCount == *burstLen {
 				fo, err := getCurrentOutputStream(*splitFiles, fileCount)
 				if err != nil {
-					log.Fatal(err)
+					fmt.Println(err)
+					os.Exit(1)
 				}
 				burst := dataframe.BuildDataBurst(frameBatch)
 				bytes, err := dataframe.MarshalDataBurst(burst)
 				if err != nil {
-					log.Printf("Error marshalling burst: %v\n", err)
+					fmt.Printf("Error marshalling burst: %v\n", err)
 				} else {
 					fo.Write(bytes)
 				}
