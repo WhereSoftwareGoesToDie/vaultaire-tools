@@ -3,17 +3,20 @@ CFLAGS=-g -Wall -O2
 LDFLAGS=-lprotobuf-c -lrt
 PROTOCC=protoc-c
 PROTO_PATH=../protobuf/
-PROTO_SRC=${PROTO_PATH}DataFrame.proto
 
 .PHONY: default
-default: framecat
+default: framecat burstnetsink 
 
-DataFrame.pb-c.c: ${PROTO_SRC}
-	${PROTOCC} --proto_path=${PROTO_PATH} ${PROTO_SRC} --c_out .
+# protobufc
+%.pb-c.c: ${PROTO_PATH}${@:.pb-c.c=.proto}
+	${PROTOCC} --proto_path=${PROTO_PATH} ${PROTO_PATH}${@:.pb-c.c=.proto} --c_out .
 
-framecat: DataFrame.pb-c.c framecat.c
+framecat: DataFrame.pb-c.c 
+
+LDFLAGS:=${LDFLAGS} -lzmq -llz4
+burstnetsink: DataFrame.pb-c.c DataBurst.pb-c.c 
 
 .PHONY: clean
 clean:
-	rm -f framecat.o DataFrame.pb-c.[coh] framecat
+	rm -f framecat.o DataBurst.pb-c.[coh] DataFrame.pb-c.[coh] framecat burstnetsink
 
