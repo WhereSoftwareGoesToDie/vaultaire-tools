@@ -43,7 +43,7 @@ int write_burst(FILE *fp, uint8_t *packed_burst, size_t packed_size) {
 
 int main(int argc, char **argv) {
 	void *zmq_context = zmq_ctx_new();
-	void *zmq_responder = zmq_socket(zmq_context, ZMQ_DEALER);
+	void *zmq_responder = zmq_socket(zmq_context, ZMQ_ROUTER);
 	uint8_t *decompressed_buffer;
 	size_t decompressed_bufsize = INITIAL_DECOMPRESS_BUFSIZE;
 
