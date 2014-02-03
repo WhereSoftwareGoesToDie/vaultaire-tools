@@ -1,10 +1,8 @@
 /*
- * framenetsink - Pretend to be a vaultaire broker and stream to stdout
+ * burstnetsink - Pretend to be a vaultaire broker and stream 
+ * 		  received DataBursts to stdout.
  *
- * output format is the frame length as a network byte ordered 
- * uint32, followed by the frame itself.
- *
- * No care is taken to drop duplicate frames
+ * output format is the DataBurst length as a network byte ordered uint32
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,53 +25,20 @@
 
 #define INITIAL_DECOMPRESS_BUFSIZE 1024000
 
-/* take DataFrames from a packed DataBurst protobuf and write 
- * them to stdout
+/* write out a DataBurst
  *
- * returns frames written on success, or -1 on failure
+ * First writes out the length of the databurst as a network
+ * byte ordered uint32
+ *
+ * returns >= 1 on success
  */
-int write_frames(FILE *fp, uint8_t *packed_burst, size_t packed_size) {
-	int i;
-	int frame_count = 0;
-	DataBurst *burst;
+int write_burst(FILE *fp, uint8_t *packed_burst, size_t packed_size) {
+	int n_burstlen;
 
-	DEBUG_PRINTF("unpacking databurst of size %lu\n", packed_size);
-	burst = data_burst__unpack(NULL, packed_size, packed_burst);
-	if (burst == NULL) return -1;
-	DEBUG_PRINTF("unpacking %lu frames from databurst\n", burst->n_frames);
-
-
-	for (i=0; i < burst->n_frames; ++i) {
-		DataFrame *frame = burst->frames[i];
-		uint32_t framelen;
-		uint32_t n_framelen;
-		uint8_t *buf;
-
-		/* Repack the dataframe */
-		framelen = data_frame__get_packed_size(frame);
-		DEBUG_PRINTF("repacked framelen is %u\n", framelen);
-		buf = malloc(framelen);
-		if (buf == NULL) { perror("malloc"); frame_count = -1; break; }
-
-		int packed_size;
-		packed_size = data_frame__pack(frame, buf);
-		assert(packed_size == framelen);
-
-		/* and write */
-		n_framelen = htonl(framelen);
-		if (fwrite(&n_framelen, sizeof(n_framelen), 1, fp) != 1) {
-			free(buf); perror("fwrite"); frame_count = -1; break;
-		}
-		if (fwrite(&buf, framelen, 1, fp) != 1) {
-			free(buf); perror("fwrite"); frame_count = -1; break;
-		}
-
-		free(buf);
-		frame_count++;
-	}
-
-	//data_burst__free_unpacked(burst, NULL);
-	return frame_count;	
+	n_burstlen = htonl(packed_size);
+	if (fwrite(&n_burstlen, sizeof(n_burstlen), 1, fp) != 1) 
+		return -1;
+	return fwrite(packed_burst, packed_size, 1, fp);
 }
 
 int main(int argc, char **argv) {
@@ -88,19 +53,30 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	if (zmq_bind(zmq_responder, argv[1]))
-		return perror("zmq_bind"), 1;
 
+	/* Need some space to decompress the databursts into
+	 */
 	decompressed_buffer = malloc(decompressed_bufsize);
 	if (decompressed_buffer == NULL) 
 		return perror("malloc"), 1;
 
-	int rxcount = 0;
+	/* Bind the zmq socket  */
+	if (zmq_bind(zmq_responder, argv[1])) {
+		return perror("zmq_bind"), 1;
+	}
+
+	/* 
+	 * Receive handler. 
+	 *
+	 * 	* receive the message
+	 * 	* write out
+	 * 	* ack once write successful
+	 */
 	while(1) {
 		zmq_msg_init(&msg);
 		size_t rxed = zmq_msg_recv(&msg, zmq_responder, 0);
 		DEBUG_PRINTF("received %lu bytes. zmq_msg_size is %lu\n", rxed, zmq_msg_size(&msg));
-		rxcount++;
+
 		if (rxed) {
 			uint8_t *compressed_buffer;
 			uint32_t uncompressed_size_from_header;
@@ -139,9 +115,18 @@ int main(int argc, char **argv) {
 
 			assert(((uint8_t *)zmq_msg_data(&msg) + 8) == compressed_buffer);
 
+			/* Make sure we have enough room to decompress the burst into.
+			 *
+			 * We probably shouldn't trust the burst header here if this is
+			 * used in production as it could easily be used to DoS based on
+			 * memory usage.  At the same time, databursts can legitimately
+			 * be hundreds of MB in size, so limiting this is curious.
+			 */
 			if (decompressed_bufsize < uncompressed_size_from_header) {
-				/* Need a bigger buffer to hold the uncompressed data in */
 				void *new_buffer;
+				DEBUG_PRINTF("growing buffer from %lu to %u bytes\n", 
+						decompressed_bufsize,
+						uncompressed_size_from_header);
 				new_buffer = realloc(decompressed_buffer, uncompressed_size_from_header);
 				if (new_buffer == NULL) {
 					perror("realloc");
@@ -165,14 +150,17 @@ int main(int argc, char **argv) {
 				zmq_msg_close(&msg);
 				return 1;
 			}
+
+			/* Crosscheck decompressed size is what we expect */
 			if (databurst_size != uncompressed_size_from_header) {
 				fprintf(stderr, "uncompressed DataBurst size and header don't match. skipping");
 				zmq_msg_close(&msg);
 				continue;
 			}
 
-			if (write_frames(stdout, decompressed_buffer, databurst_size) < 0)  {
-				fprintf(stderr, "error writing frames to stdout.\n");
+			/* Write out and flush */
+			if (write_burst(stdout, decompressed_buffer, databurst_size) < 0)  {
+				perror("writing databurst");
 				zmq_msg_close(&msg); 
 				free(decompressed_buffer);
 				return 1;
