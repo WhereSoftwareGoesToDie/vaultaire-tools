@@ -1,0 +1,8 @@
+For C tools:
+
+ * protobufc-c	(C implementation of Protobuf)
+
+Additionally, for burstnetsink:
+
+ * ZeroMQ 4
+ * lz4
