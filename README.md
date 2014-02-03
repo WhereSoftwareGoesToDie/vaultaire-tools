@@ -18,3 +18,13 @@ framecat:
 		...
 
 	etc.
+
+burstnetsink:
+
+	burstnetsink listens on a zeromq socket and pretends to be a vaultaire
+	broker, decompresses and writes any received DataBursts to stdout.
+
+	It can be used to get databursts from any libmarquise client
+
+	DataBursts are written out with the same length header format used
+	by framecat
