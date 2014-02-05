@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
 	size_t decompressed_bufsize = INITIAL_DECOMPRESS_BUFSIZE;
 	int verbose = 0;
 	int hexdump = 0;
+	int dummy_mode = 0;
 	char *zmq_bind_address;
 
 #define verbose_printf(...) { if (verbose) fprintf(stderr, __VA_ARGS__); }
@@ -64,6 +65,8 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "%s [-v] [-x] <zmq socket to bind to>\n\n"
 				"\t\t-v\tverbose\n"
 				"\t\t-x\toutput databurst as hex\n"
+				"\t\t-d\tdummy mode. ack messages but do not"
+				"decompress, check or write to stdout\n"
 				, argv[0]);
 		return 1;
 	}
@@ -77,6 +80,8 @@ int main(int argc, char **argv) {
 			verbose = 1;
 		else if (strncmp("-x", *argv, 3) == 0) 
 			hexdump = 1;
+		else if (strncmp("-d", *argv, 3) == 0) 
+			dummy_mode = 1;
 		else break;
 		argv++; argc--;
 	}
@@ -180,46 +185,46 @@ int main(int argc, char **argv) {
                 decompressed_bufsize = uncompressed_size_from_header;
         }
 
-        /* Decompress the databurst */
-        int databurst_size;
-        databurst_size = LZ4_decompress_safe(
-                (const char *)compressed_buffer,
-                (char *)decompressed_buffer,
-                (int)compressed_size_from_header,
-                (int)decompressed_bufsize);
+	if (!dummy_mode) {
+		/* Decompress the databurst */
+		int databurst_size;
+		databurst_size = LZ4_decompress_safe(
+			(const char *)compressed_buffer,
+			(char *)decompressed_buffer,
+			(int)compressed_size_from_header,
+			(int)decompressed_bufsize);
 
-        if (databurst_size < 1) {
-                fprintf(stderr,"DataBurst decompression failure");
-                return 1;
-        }
+		if (databurst_size < 1) {
+			fprintf(stderr,"DataBurst decompression failure");
+			return 1;
+		}
 
-        /* Crosscheck decompressed size is what we expect */
-        if (databurst_size != uncompressed_size_from_header) {
-                fprintf(stderr, "uncompressed DataBurst size and header don't match. skipping");
-                zmq_msg_close(&burst);
-                continue;
-        }
+		/* Crosscheck decompressed size is what we expect */
+		if (databurst_size != uncompressed_size_from_header) {
+			fprintf(stderr, "uncompressed DataBurst size and header don't match. skipping");
+			zmq_msg_close(&burst);
+			continue;
+		}
 
-        /* Write out and flush */
-	if (! hexdump) {
-		if (write_burst(stdout, decompressed_buffer, databurst_size) < 0)
-			return perror("writing databurst"), 1;
+		/* Write out and flush */
+		if (! hexdump) {
+			if (write_burst(stdout, decompressed_buffer, databurst_size) < 0)
+				return perror("writing databurst"), 1;
+		}
+		else {
+			fhexdump(stdout, decompressed_buffer, databurst_size);
+			printf("\n");
+		}
+
+		fflush(stdout);
 	}
-	else {
-		fhexdump(stdout, decompressed_buffer, databurst_size);
-		printf("\n");
-	}
-
-        fflush(stdout);
         zmq_msg_close(&burst);
 
         /* Send an ack */
         if(zmq_msg_send(&ident, zmq_responder, ZMQ_SNDMORE) < 0)
                 return perror("zmq_send (ident)"), 1;
-
         if(zmq_msg_send(&msg_id, zmq_responder, ZMQ_SNDMORE) < 0)
                 return perror("zmq_send (msg_id)"), 1;
-
         if (zmq_send(zmq_responder, NULL, 0, 0) < 0)
                 return perror("zmq_send (null ack)"), 1;
 	}
