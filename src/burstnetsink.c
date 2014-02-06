@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <endian.h>
 #include <assert.h>
 #include <zmq.h>
@@ -57,6 +58,7 @@ int main(int argc, char **argv) {
 	int verbose = 0;
 	int hexdump = 0;
 	int dummy_mode = 0;
+	int slow_mode = 0;
 	char *zmq_bind_address;
 
 #define verbose_printf(...) { if (verbose) fprintf(stderr, __VA_ARGS__); }
@@ -66,6 +68,7 @@ int main(int argc, char **argv) {
 				"\t\t-v\tverbose\n"
 				"\t\t-x\toutput databurst as hex\n"
 				"\t\t-d\tdummy mode. ack messages but do not"
+				"\t\t-s\tslow mode. wait 1 second before acking"
 				"decompress, check or write to stdout\n"
 				, argv[0]);
 		return 1;
@@ -82,6 +85,8 @@ int main(int argc, char **argv) {
 			hexdump = 1;
 		else if (strncmp("-d", *argv, 3) == 0) 
 			dummy_mode = 1;
+		else if (strncmp("-s", *argv, 3) == 0) 
+			slow_mode = 1;
 		else break;
 		argv++; argc--;
 	}
@@ -108,126 +113,130 @@ int main(int argc, char **argv) {
 	 * 	* ack once write successful
 	 */
 	while(1) {
-        zmq_msg_t ident, msg_id, burst;
-		zmq_msg_init(&ident);
-		zmq_msg_init(&msg_id);
-		zmq_msg_init(&burst);
+                zmq_msg_t ident, msg_id, burst;
+                        zmq_msg_init(&ident);
+                        zmq_msg_init(&msg_id);
+                        zmq_msg_init(&burst);
 
-		size_t ident_rx  = zmq_msg_recv(&ident, zmq_responder, 0);
-        if (ident_rx < 1 ) return perror("zmq_msg_recv (ident_rx)"), 1;
+                        size_t ident_rx  = zmq_msg_recv(&ident, zmq_responder, 0);
+                if (ident_rx < 1 ) return perror("zmq_msg_recv (ident_rx)"), 1;
 
-		size_t msg_id_rx = zmq_msg_recv(&msg_id, zmq_responder, 0);
-        if (msg_id_rx < 1 ) return perror("zmq_msg_recv (msg_id_rx)"), 1;
+                        size_t msg_id_rx = zmq_msg_recv(&msg_id, zmq_responder, 0);
+                if (msg_id_rx < 1 ) return perror("zmq_msg_recv (msg_id_rx)"), 1;
 
-		size_t burst_rx  = zmq_msg_recv(&burst, zmq_responder, 0);
-        if (burst_rx < 1 ) return perror("zmq_msg_recv (burst_rx)"), 1;
+                        size_t burst_rx  = zmq_msg_recv(&burst, zmq_responder, 0);
+                if (burst_rx < 1 ) return perror("zmq_msg_recv (burst_rx)"), 1;
 
-        uint8_t *compressed_buffer;
-        uint32_t uncompressed_size_from_header;
-        uint32_t compressed_size_from_header;
+                uint8_t *compressed_buffer;
+                uint32_t uncompressed_size_from_header;
+                uint32_t compressed_size_from_header;
 
-	if (verbose) {
-		fprintf(stderr, "received %lu bytes\n\tidentity:\t0x", zmq_msg_size(&burst));
-		fhexdump(stderr, zmq_msg_data(&ident), zmq_msg_size(&ident));
-		fprintf(stderr, "\n\tmessage id:\t0x");
-		fhexdump(stderr, zmq_msg_data(&msg_id), zmq_msg_size(&msg_id));
-		fputc('\n', stderr);
-	}
+                if (verbose) {
+                        fprintf(stderr, "received %lu bytes\n\tidentity:\t0x", zmq_msg_size(&burst));
+                        fhexdump(stderr, zmq_msg_data(&ident), zmq_msg_size(&ident));
+                        fprintf(stderr, "\n\tmessage id:\t0x");
+                        fhexdump(stderr, zmq_msg_data(&msg_id), zmq_msg_size(&msg_id));
+                        fputc('\n', stderr);
+                }
 
-        /* The databurst has an 8 byte header. 2 uint32s with
-        * little endian ordering advising compressed and
-        * decompressed size for some lz4 implementations.
-        *
-        * We can ignore this as we don't need to know the original
-        * size to decompress
-        */
-        if (zmq_msg_size(&burst) <= 8) {
-                fprintf(stderr, "received message too small. ignoring\n");
-                zmq_msg_close(&burst);
-                continue;
-        }
-        compressed_buffer = (uint8_t *)zmq_msg_data(&burst);
+                /* The databurst has an 8 byte header. 2 uint32s with
+                * little endian ordering advising compressed and
+                * decompressed size for some lz4 implementations.
+                *
+                * We can ignore this as we don't need to know the original
+                * size to decompress
+                */
+                if (zmq_msg_size(&burst) <= 8) {
+                        fprintf(stderr, "received message too small. ignoring\n");
+                        zmq_msg_close(&burst);
+                        continue;
+                }
+                compressed_buffer = (uint8_t *)zmq_msg_data(&burst);
 
-        uncompressed_size_from_header = le32toh(*(uint32_t *)compressed_buffer);
-        compressed_buffer += sizeof(uint32_t);
+                uncompressed_size_from_header = le32toh(*(uint32_t *)compressed_buffer);
+                compressed_buffer += sizeof(uint32_t);
 
-        compressed_size_from_header = le32toh(*(uint32_t *)compressed_buffer);
-        compressed_buffer += sizeof(uint32_t);
+                compressed_size_from_header = le32toh(*(uint32_t *)compressed_buffer);
+                compressed_buffer += sizeof(uint32_t);
 
-        verbose_printf("\tcompressed:\t%u bytes\n\tuncompressed:\t%u bytes\n",
-                uncompressed_size_from_header,
-                compressed_size_from_header);
-
-        if (zmq_msg_size(&burst) != (compressed_size_from_header + 8)) {
-                fprintf(stderr, "Message size and header payload size don't match. skipping");
-                zmq_msg_close(&burst);
-                continue;
-        }
-
-        assert(((uint8_t *)zmq_msg_data(&burst) + 8) == compressed_buffer);
-
-        /* Make sure we have enough room to decompress the burst into.
-        *
-        * We probably shouldn't trust the burst header here if this is
-        * used in production as it could easily be used to DoS based on
-        * memory usage.  At the same time, databursts can legitimately
-        * be hundreds of MB in size, so limiting this is curious.
-        */
-        if (decompressed_bufsize < uncompressed_size_from_header) {
-                void *new_buffer;
-                DEBUG_PRINTF("growing buffer from %lu to %u bytes\n",
-                        decompressed_bufsize,
+                verbose_printf("\tcompressed:\t%u bytes\n\tuncompressed:\t%u bytes\n",
+                        compressed_size_from_header,
                         uncompressed_size_from_header);
-                new_buffer = realloc(decompressed_buffer, uncompressed_size_from_header);
-                if (new_buffer == NULL) return perror("realloc"), 1;
 
-                decompressed_buffer = new_buffer;
-                decompressed_bufsize = uncompressed_size_from_header;
-        }
+                if (zmq_msg_size(&burst) != (compressed_size_from_header + 8)) {
+                        fprintf(stderr, "Message size and header payload size don't match. skipping");
+                        zmq_msg_close(&burst);
+                        continue;
+                }
 
-	if (!dummy_mode) {
-		/* Decompress the databurst */
-		int databurst_size;
-		databurst_size = LZ4_decompress_safe(
-			(const char *)compressed_buffer,
-			(char *)decompressed_buffer,
-			(int)compressed_size_from_header,
-			(int)decompressed_bufsize);
+                assert(((uint8_t *)zmq_msg_data(&burst) + 8) == compressed_buffer);
 
-		if (databurst_size < 1) {
-			fprintf(stderr,"DataBurst decompression failure");
-			return 1;
-		}
+                /* Make sure we have enough room to decompress the burst into.
+                *
+                * We probably shouldn't trust the burst header here if this is
+                * used in production as it could easily be used to DoS based on
+                * memory usage.  At the same time, databursts can legitimately
+                * be hundreds of MB in size, so limiting this is curious.
+                */
+                if (decompressed_bufsize < uncompressed_size_from_header) {
+                        void *new_buffer;
+                        DEBUG_PRINTF("growing buffer from %lu to %u bytes\n",
+                                decompressed_bufsize,
+                                uncompressed_size_from_header);
+                        new_buffer = realloc(decompressed_buffer, uncompressed_size_from_header);
+                        if (new_buffer == NULL) return perror("realloc"), 1;
 
-		/* Crosscheck decompressed size is what we expect */
-		if (databurst_size != uncompressed_size_from_header) {
-			fprintf(stderr, "uncompressed DataBurst size and header don't match. skipping");
-			zmq_msg_close(&burst);
-			continue;
-		}
+                        decompressed_buffer = new_buffer;
+                        decompressed_bufsize = uncompressed_size_from_header;
+                }
 
-		/* Write out and flush */
-		if (! hexdump) {
-			if (write_burst(stdout, decompressed_buffer, databurst_size) < 0)
-				return perror("writing databurst"), 1;
-		}
-		else {
-			fhexdump(stdout, decompressed_buffer, databurst_size);
-			printf("\n");
-		}
+                if (!dummy_mode) {
+                        /* Decompress the databurst */
+                        int databurst_size;
+                        databurst_size = LZ4_decompress_safe(
+                                (const char *)compressed_buffer,
+                                (char *)decompressed_buffer,
+                                (int)compressed_size_from_header,
+                                (int)decompressed_bufsize);
 
-		fflush(stdout);
-	}
-        zmq_msg_close(&burst);
+                        if (databurst_size < 1) {
+                                fprintf(stderr,"DataBurst decompression failure");
+                                return 1;
+                        }
 
-        /* Send an ack */
-        if(zmq_msg_send(&ident, zmq_responder, ZMQ_SNDMORE) < 0)
-                return perror("zmq_send (ident)"), 1;
-        if(zmq_msg_send(&msg_id, zmq_responder, ZMQ_SNDMORE) < 0)
-                return perror("zmq_send (msg_id)"), 1;
-        if (zmq_send(zmq_responder, NULL, 0, 0) < 0)
+                        /* Crosscheck decompressed size is what we expect */
+                        if (databurst_size != uncompressed_size_from_header) {
+                                fprintf(stderr, "uncompressed DataBurst size and header don't match. skipping");
+                                zmq_msg_close(&burst);
+                                continue;
+                        }
+
+                        /* Write out and flush */
+                        if (! hexdump) {
+                                if (write_burst(stdout, decompressed_buffer, databurst_size) < 0)
+                                        return perror("writing databurst"), 1;
+                        }
+                        else {
+                                fhexdump(stdout, decompressed_buffer, databurst_size);
+                                printf("\n");
+                        }
+
+                        fflush(stdout);
+                }
+                zmq_msg_close(&burst);
+
+                /* Send an ack */
+                if (slow_mode)
+                        usleep(1000000);
+
+                if(zmq_msg_send(&ident, zmq_responder, ZMQ_SNDMORE) < 0)
+                        return perror("zmq_send (ident)"), 1;
+                if(zmq_msg_send(&msg_id, zmq_responder, ZMQ_SNDMORE) < 0)
+                        return perror("zmq_send (msg_id)"), 1;
+                if (zmq_send(zmq_responder, NULL, 0, 0) < 0)
                 return perror("zmq_send (null ack)"), 1;
 	}
+	DEBUG_PRINTF("done\n");
 
 	free(decompressed_buffer);
 
