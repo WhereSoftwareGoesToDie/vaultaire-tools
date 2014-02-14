@@ -1,4 +1,4 @@
-bletchley_framecat: install
+framefelid: install
 
 install: build check
 	go install
@@ -10,7 +10,7 @@ deps:
 	go get
 
 clean:
-	rm -f framecat
+	rm -f framefelid
 
 check:
 	go test
