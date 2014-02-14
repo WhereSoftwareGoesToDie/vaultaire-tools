@@ -31,7 +31,7 @@ func getCurrentOutputStream(splitFiles string, burstIndex int) (*os.File, error)
 func main() {
 	frameCount := flag.Int("count", 100, "Number of frames to generate (if -burst is false, this is forced to 1).")
 	burstPack := flag.Bool("burst", true, "Generate DataBursts rather than plain DataFrames.")
-	burstLen := flag.Int("burst-len", 10, "Number of DataFrames per DataBurst (only used with -burst).")
+	burstLen := flag.Int("burst-len", 100, "Number of DataFrames per DataBurst (only used with -burst).")
 	splitFiles := flag.String("split-files", "", "Write generated DataBursts to (<count>/<burst-len>) files, named numerically using the value of this argument as the prefix.")
 
 	flag.Usage = func() {
