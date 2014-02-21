@@ -3,6 +3,7 @@ CFLAGS=-g -Wall -O2
 LDFLAGS=-lprotobuf-c -lrt
 PROTOCC=protoc-c
 PROTO_PATH=../protobuf/
+INSTALL_DIR=/usr/local/bin
 
 .PHONY: default
 default: framecat burstnetsink 
@@ -20,3 +21,7 @@ burstnetsink: DataFrame.pb-c.c DataBurst.pb-c.c
 clean:
 	rm -f framecat.o DataBurst.pb-c.[coh] DataFrame.pb-c.[coh] framecat burstnetsink
 
+
+install: framecat burstnetsink
+	cp framecat ${INSTALL_DIR}
+	cp burstnetsink ${INSTALL_DIR}

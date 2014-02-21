@@ -286,9 +286,6 @@ int main(int argc, char **argv) {
 
 			fflush(stdout);
 		}
-		zmq_msg_close(&ident);
-		zmq_msg_close(&msg_id);
-		zmq_msg_close(&burst);
 
 		/* Send back acks if we aren't passively listening */
 		if (!broker_sub) {
@@ -303,6 +300,13 @@ int main(int argc, char **argv) {
 			if (zmq_send(zmq_sock, NULL, 0, 0) < 0)
 			return perror("zmq_send (null ack)"), 1;
 		}
+		else {
+			/* No acks as we're just subscribing so we need to
+			 * clean up the message headers */
+			zmq_msg_close(&ident);
+			zmq_msg_close(&msg_id);
+		}
+		zmq_msg_close(&burst);
 	}
 	DEBUG_PRINTF("done\n");
 
