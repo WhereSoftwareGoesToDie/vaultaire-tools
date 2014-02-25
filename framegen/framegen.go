@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/anchor/bletchley/dataframe"
-	_ "github.com/anchor/chevalier"
+	"github.com/anchor/chevalier"
 	"os"
 )
 
@@ -66,6 +66,16 @@ func genFrames(nFrames int, splitFiles string, burstLen int, burstPack bool) {
 	}
 }
 
+func genSourceRequest() {
+	req := chevalier.GenTestSourceRequest()
+	fo := os.Stdout
+	packet, err := chevalier.MarshalSourceRequest(req)
+	if err != nil {
+		fmt.Printf("Error marshalling SourceRequest: %v", err)
+	}
+	fo.Write(packet)
+}
+
 func main() {
 	frameCount := flag.Int("count", 100, "Number of frames to generate (if -burst is false, this is forced to 1).")
 	burstPack := flag.Bool("burst", true, "Generate DataBursts rather than plain DataFrames.")
@@ -88,7 +98,9 @@ func main() {
 		nFrames = 1
 	}
 
-	if !(*sourceReq) {
+	if *sourceReq {
+		genSourceRequest()
+	} else {
 		genFrames(nFrames, *splitFiles, *burstLen, *burstPack)
 	}
 }
