@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/anchor/bletchley/dataframe"
+	_ "github.com/anchor/chevalier"
 	"os"
 )
 
@@ -28,9 +29,47 @@ func getCurrentOutputStream(splitFiles string, burstIndex int) (*os.File, error)
 	return fo, nil
 }
 
+func genFrames(nFrames int, splitFiles string, burstLen int, burstPack bool) {
+	fileCount := 0
+	frameBatch := make([]*dataframe.DataFrame, burstLen)
+	burstCount := 0
+	for i := 0; i < nFrames; i++ {
+		frame := dataframe.GenTestDataFrame()
+		if !burstPack {
+			bytes, err := dataframe.MarshalDataFrame(frame)
+			if err != nil {
+				fmt.Printf("Error marshalling frame %v: %v\n", frame, err)
+			} else {
+				os.Stdout.Write(bytes)
+			}
+		} else {
+			frameBatch[burstCount] = frame
+			burstCount += 1
+			if burstCount == burstLen {
+				fo, err := getCurrentOutputStream(splitFiles, fileCount)
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+				burst := dataframe.BuildDataBurst(frameBatch)
+				bytes, err := dataframe.MarshalDataBurst(burst)
+				if err != nil {
+					fmt.Printf("Error marshalling burst: %v\n", err)
+				} else {
+					fo.Write(bytes)
+				}
+				frameBatch = make([]*dataframe.DataFrame, burstLen)
+				burstCount = 0
+				fileCount += 1
+			}
+		}
+	}
+}
+
 func main() {
 	frameCount := flag.Int("count", 100, "Number of frames to generate (if -burst is false, this is forced to 1).")
 	burstPack := flag.Bool("burst", true, "Generate DataBursts rather than plain DataFrames.")
+	sourceReq := flag.Bool("source-req", false, "Generate SourceRequests rather than DataFrames")
 	burstLen := flag.Int("burst-len", 100, "Number of DataFrames per DataBurst (only used with -burst).")
 	splitFiles := flag.String("split-files", "", "Write generated DataBursts to (<count>/<burst-len>) files, named numerically using the value of this argument as the prefix.")
 
@@ -43,44 +82,13 @@ func main() {
 	}
 	flag.Parse()
 
-	frameBatch := make([]*dataframe.DataFrame, *burstLen)
-	burstCount := 0
 
 	nFrames := *frameCount
 	if !*burstPack {
 		nFrames = 1
 	}
 
-	fileCount := 0
-	for i := 0; i < nFrames; i++ {
-		frame := dataframe.GenTestDataFrame()
-		if !*burstPack {
-			bytes, err := dataframe.MarshalDataFrame(frame)
-			if err != nil {
-				fmt.Printf("Error marshalling frame %v: %v\n", frame, err)
-			} else {
-				os.Stdout.Write(bytes)
-			}
-		} else {
-			frameBatch[burstCount] = frame
-			burstCount += 1
-			if burstCount == *burstLen {
-				fo, err := getCurrentOutputStream(*splitFiles, fileCount)
-				if err != nil {
-					fmt.Println(err)
-					os.Exit(1)
-				}
-				burst := dataframe.BuildDataBurst(frameBatch)
-				bytes, err := dataframe.MarshalDataBurst(burst)
-				if err != nil {
-					fmt.Printf("Error marshalling burst: %v\n", err)
-				} else {
-					fo.Write(bytes)
-				}
-				frameBatch = make([]*dataframe.DataFrame, *burstLen)
-				burstCount = 0
-				fileCount += 1
-			}
-		}
+	if !(*sourceReq) {
+		genFrames(nFrames, *splitFiles, *burstLen, *burstPack)
 	}
 }
