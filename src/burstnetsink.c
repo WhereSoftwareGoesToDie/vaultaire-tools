@@ -285,6 +285,7 @@ int main(int argc, char **argv) {
 					perror("failed to decode protobuf");
 				} else {
 					printf("\tpoints:\t\t%u\n", (unsigned int)b->n_frames);
+					data_burst__free_unpacked(b, NULL);
 				}
 
 			} else if (hexdump) {
