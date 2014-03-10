@@ -64,6 +64,7 @@ int main(int argc, char **argv) {
 	int slow_mode = 0;
 	int broker_sub = 0;
 	int fake_ingestd = 0;
+	int just_points = 0;
 	char *zmq_sock_address;
 
 #define verbose_printf(...) { if (verbose) fprintf(stderr, __VA_ARGS__); }
@@ -77,6 +78,7 @@ int main(int argc, char **argv) {
 				"\t\t-s\tslow mode. wait 1 second before acking\n"
 				"\t\t-b\tconnect to the telemetry port of a broker"
 				" rather than listening\n"
+				"\t\t-p\tprint the number of points in a burst only\n"
 				"\t\t-i\tconnect to the ingestd (outgoing) port of a broker"
 				" rather than listening\n\t\t\tWARNING: THIS WILL ACK AND DESTROY"
 				" ANY FRAMES THAT IT RECEIVES THAT WERE DESTINED FOR VAULTAIRE\n"
@@ -101,6 +103,8 @@ int main(int argc, char **argv) {
 			broker_sub = 1;
 		else if (strncmp("-i", *argv, 3) == 0)
 			fake_ingestd =  1;
+		else if (strncmp("-p", *argv, 3) == 0)
+			just_points =  1;
 		else break;
 		argv++; argc--;
 	}
@@ -275,13 +279,22 @@ int main(int argc, char **argv) {
 			}
 
 			/* Write out and flush */
-			if (! hexdump) {
-				if (write_burst(stdout, decompressed_buffer, databurst_size) < 0)
-					return perror("writing databurst"), 1;
-			}
-			else {
+			if (just_points) {
+				DataBurst *b = data_burst__unpack(NULL, databurst_size, decompressed_buffer);
+				if( b == NULL ) {
+					perror("failed to decode protobuf");
+				} else {
+					printf("\tpoints:\t\t%u\n", (unsigned int)b->n_frames);
+					data_burst__free_unpacked(b, NULL);
+				}
+
+			} else if (hexdump) {
 				fhexdump(stdout, decompressed_buffer, databurst_size);
 				printf("\n");
+			}
+			else {
+				if (write_burst(stdout, decompressed_buffer, databurst_size) < 0)
+					return perror("writing databurst"), 1;
 			}
 
 			fflush(stdout);
