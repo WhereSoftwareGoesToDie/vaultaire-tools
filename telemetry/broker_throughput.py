@@ -192,8 +192,8 @@ if __name__ == '__main__':
                 average_latencies, outstanding_totals) 
 
         for seconds,pps,aps,latency,backlog in groups:
-            #print "last %3ds: %.2f points/sec in - %.2f acked points/sec.- avglatency: %.2f seconds.  backlog: %s points" %( seconds, pps, aps, latency, backlog )
-            print "(%ssec) incoming_points_per_second:%.2f acked_point_per_second:%.2f mean_ack_latency:%.2f backlogged_points:%s"  %( seconds, pps, aps, latency, backlog )
+            #print "(%ssec) incoming_points_per_second:%.2f acked_point_per_second:%.2f mean_ack_latency:%.2f backlogged_points:%s"  %( seconds, pps, aps, latency, backlog )
+            print "(%ssec) incoming_points_per_second:%.2f acked_point_per_second:%.2f mean_ack_latency:%.2f"  %( seconds, pps, aps, latency)
         print
         sys.stdout.flush()
 
