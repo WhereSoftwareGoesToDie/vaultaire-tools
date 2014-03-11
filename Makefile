@@ -7,11 +7,11 @@ install: install-all
 clean: clean-all
 
 build-all:
-	make -C src
+	$(MAKE) $(MFLAGS) -C src
 
 install-all:
-	make -C telemetry install
-	make -C src install
+	$(MAKE) $(MFLAGS) -C telemetry install
+	$(MAKE) $(MFLAGS) -C src install
 
 clean-all:
-	make -C src clean
+	$(MAKE) $(MFLAGS) -C src clean
