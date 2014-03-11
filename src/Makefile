@@ -1,9 +1,11 @@
 CC=gcc
+INSTALL?=install
 CFLAGS=-g -Wall -O2
 LDFLAGS=-lprotobuf-c -lrt
 PROTOCC=protoc-c
 PROTO_PATH=../protobuf/
-INSTALL_DIR=/usr/local/bin
+BINDIR?=/usr/local/bin
+INSTALL_DIR?=$(BINDIR)
 
 .PHONY: default
 default: framecat burstnetsink 
@@ -23,5 +25,5 @@ clean:
 
 
 install: framecat burstnetsink
-	cp framecat ${INSTALL_DIR}
-	cp burstnetsink ${INSTALL_DIR}
+	$(INSTALL) framecat ${INSTALL_DIR}
+	$(INSTALL) burstnetsink ${INSTALL_DIR}

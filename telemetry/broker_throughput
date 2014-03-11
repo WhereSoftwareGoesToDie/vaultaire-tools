@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ -z "$1" ]; then
+    echo $0 '<broker hostname>'
+    exit 0
+fi
+
+burstnetsink -v -p -b "tcp://${1}:5000" 2>&1 | broker_throughput.py
