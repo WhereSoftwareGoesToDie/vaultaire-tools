@@ -82,19 +82,23 @@ class TimeHistogram(TimeAware):
         return self._bins[self.current_bin+1:]+self._bins[:self.current_bin+1]
 
 class ThroughputCounter(object):
-    def __init__(self):
+    def __init__(self, input_stream=sys.stdin):
+        self.input_stream=input_stream
+
         self.point_hist = TimeHistogram(600) 
         self.burst_hist = TimeHistogram(600) 
         self.acked_burst_hist = TimeHistogram(600) 
         self.latency_hist = TimeHistogram(600) 
         self.ack_hist = TimeHistogram(600) 
-        self.outstanding_bursts = {}  # burstid -> start timestamp
+        self.outstanding_bursts = {}  # burstid -> start timestamp,points
         self._reader_state = {}
 
     def get_outstanding(self,last_n_seconds=[10,60]):
         total_burst_counts = map(self.point_hist.sum, last_n_seconds)
         total_ack_counts = map(self.ack_hist.sum, last_n_seconds)
         return [nbursts-nacks for nbursts,nacks in zip(total_burst_counts,total_ack_counts)]
+    def get_total_outstanding_points(self):
+        return sum(points for timestamp,points in self.outstanding_bursts.itervalues())
     def get_points_per_seconds(self,over_seconds=[300,60,10]):
         return map(self.point_hist.mean, over_seconds)
     def get_total_bursts(self,over_seconds=[300,60,10]):
@@ -124,7 +128,7 @@ class ThroughputCounter(object):
 
         msgtag = data['identity']+data['message id']
         if msgtag not in self.outstanding_bursts:
-            print >> sys.stderr, 'got ack we didn\'t see the burst for. ignoring it. This is perfectly fine'
+            # got ack we didn't see the burst for. ignoring it.
             return
 
         burst_timestamp,points = self.outstanding_bursts.pop(msgtag)
@@ -132,7 +136,6 @@ class ThroughputCounter(object):
         self.ack_hist.add(points)
         self.acked_burst_hist.add(1)
         self.latency_hist.add(latency)
-        print >> sys.stderr, "ack for",msgtag,"- latency:",latency
 
     def process_line(self, line):
         '''process a line of burstnetsink trace output
@@ -164,38 +167,86 @@ class ThroughputCounter(object):
         elif 'got ingestd ACK' in line:
             self._reader_state = {'reading':'ack'}
 
+    def process_lines_from_stream(self):
+        '''process any lines from our streams that are available to read'''
+        while True:
+            try:
+                l = self.input_stream.readline()
+                self.process_line(l)
+            except IOError:
+                # Nothing left to read at the moment
+                return
+
+
+class ThroughputPrinter(object):
+    def __init__(self, counter, outstream=sys.stdout, avgtimes=(300,60,10)):
+        self.counter = counter
+        self.outstream = outstream
+        self.avgtimes = avgtimes
+        self.lines_printed = 0
+
+    def print_header(self):
+        colbreak = " " * 3
+        header = '#'
+        header += "mean bursts per second".center(29) + colbreak
+        header += "mean acks per second".center(30) + colbreak
+        header += "mean latency per point".center(30) + colbreak
+        header += "unacked".rjust(10) + '\n'
+
+        header += "#"
+        header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)[1:]
+        header += colbreak
+        header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)
+        header += colbreak
+        header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)
+        header += colbreak + "points".rjust(10) + '\n'
+
+        header += '# ' + '-'*28 + colbreak + '-'*30 + colbreak + '-'*30 
+        header += colbreak + '-'*10 + '\n'
+
+        self.outstream.write(header)
+        self.outstream.flush()
+
+    def print_throughput(self):
+        bursts_per_second = self.counter.get_points_per_seconds(self.avgtimes)
+        acks_per_second = self.counter.get_acks_per_second(self.avgtimes)
+        mean_latencies = self.counter.get_average_latencies(self.avgtimes)
+        outstanding_points = self.counter.get_total_outstanding_points()
+
+        # RENDER ALL THE THINGS!
+        out = ""
+
+        colbreak = " " * 3
+        out += "".join((" %9.2f" % b for b in bursts_per_second))
+        out += colbreak
+        out += "".join((" %9.2f" % b for b in acks_per_second))
+        out += colbreak
+        out += "".join((" %9.2f" % b for b in mean_latencies))
+        out += colbreak
+        out += "%10d" % outstanding_points + '\n'
+
+        if self.lines_printed % 20 == 0:
+            self.print_header()
+
+        self.outstream.write(out)
+        self.outstream.flush()
+        self.lines_printed += 1
+
+
 if __name__ == '__main__':
-    watcher = ThroughputCounter()    
 
     # Make stdin non-blocking
     fd = sys.stdin.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
+    reader = ThroughputCounter(sys.stdin)
+    writer = ThroughputPrinter(reader, sys.stdout)
+    
+    # Run an event loop to process outstanding input every second
+    # and then output the processed data
 
-    def process_stdin():
-        while True:
-            try:
-                l = sys.stdin.readline()
-                watcher.process_line(l)
-            except IOError:
-                return
+    event_loop = TimeAware(1, [ reader.process_lines_from_stream,
+                                writer.print_throughput ])
+    event_loop.run_forever()
 
-    def print_throughput():
-        avgtimes = (300,60,10)
-        bursts_per_second = watcher.get_points_per_seconds(avgtimes)
-        acks_per_second = watcher.get_acks_per_second(avgtimes)
-        outstanding_totals = map(str, (max(0,n) for n in watcher.get_outstanding(avgtimes)))
-        average_latencies = watcher.get_average_latencies(avgtimes)
-
-        groups = zip(avgtimes, bursts_per_second, acks_per_second,
-                average_latencies, outstanding_totals) 
-
-        for seconds,pps,aps,latency,backlog in groups:
-            #print "(%ssec) incoming_points_per_second:%.2f acked_point_per_second:%.2f mean_ack_latency:%.2f backlogged_points:%s"  %( seconds, pps, aps, latency, backlog )
-            print "(%ssec) incoming_points_per_second:%.2f acked_point_per_second:%.2f mean_ack_latency:%.2f"  %( seconds, pps, aps, latency)
-        print
-        sys.stdout.flush()
-
-    printer = TimeAware(1, [process_stdin, print_throughput])
-    printer.run_forever()
