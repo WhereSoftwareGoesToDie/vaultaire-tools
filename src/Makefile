@@ -11,7 +11,7 @@ BINDIR?=$(PREFIX)/bin
 
 
 .PHONY: default
-default: framecat burstnetsink 
+default: framecat burstnetsink readclient
 
 # protobufc
 %.pb-c.c: ${PROTO_PATH}${@:.pb-c.c=.proto}
@@ -22,9 +22,13 @@ framecat: DataFrame.pb-c.c
 LDFLAGS:=${LDFLAGS} -lzmq -llz4
 burstnetsink: DataFrame.pb-c.c DataBurst.pb-c.c 
 
+LDFLAGS:=${LDFLAGS} -lzmq -llz4
+readclient: vaultreader.o readclient.o
+
 .PHONY: clean
 clean:
 	rm -f framecat.o DataBurst.pb-c.[coh] DataFrame.pb-c.[coh] framecat burstnetsink
+	rm -f readclient readclient.o vaultreader.o
 
 
 install: framecat burstnetsink
