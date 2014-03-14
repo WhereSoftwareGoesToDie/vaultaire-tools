@@ -106,6 +106,27 @@ int vaultaire_request_source(void *reader_connection, char *origin, vsource_t *v
 	return vaultaire_request_sources(reader_connection,origin, vsource, 1, start_timestamp, end_timestamp);
 }
 
+int vaultaire_read_replies(void *reader_connection) {
+	size_t rx_size;
+	zmq_msg_t msg;
+
+	zmq_msg_init(&msg);
+	do { 
+		rx_size = zmq_msg_recv(&msg, reader_connection, 0);
+	} while (rx_size == -1 && errno == EINTR);
+	if (rx_size == -1) 
+		return -1;
+
+	printf("read %lu bytes\n", rx_size);
+
+	if (zmq_msg_more(&msg)) {
+		printf("moar message\n");
+		return -1;
+	}
+	zmq_msg_close(&msg);
+	return 0;
+}
+
 
 /* 
  * Read multiple sources from the vault
@@ -144,37 +165,24 @@ int vaultaire_read_sources(void *reader_connection, char *origin,
 					vsource_list, nsources,
 					start_timestamp, end_timestamp);
 
-	/* TODO: READ THE RESPONSES */
 
 	/* Free tokenised source data and vsource_list */
 	for (i=0; i<nsources; ++i) 
 		_VSOURCE_FREE(vsource_list[i]);
 	free(vsource_list);
-	return 0;
-}
 
+	if (ret < 0) return ret;
 
-/*
- * Read a single source from the vault
- * sets errno and returns 0 on failure
- */
-int vaultaire_read_source(void *reader_connection, char *origin, char *source,
-				vtimestamp_t start_timestamp,
-				vtimestamp_t end_timestamp) {
-	vsource_t vsource;
-
-	//int vaultaire_request_sources(void *reader_connection, char *origin, vsource_t **vsources, int nsources, vtimestamp_t start_timestamp, vtimestamp end_timestamp) {
-	if (tokenise_source(source, strnlen(source,MAX_SOURCE_LEN), &vsource)  < 1)
-		{ errno = EINVAL; return -1; }
-
-	int ret = vaultaire_request_source(reader_connection, origin, &vsource, start_timestamp, end_timestamp);
-
-	_VSOURCE_FREE(vsource);
+	/* Read the responses */
+	ret = vaultaire_read_replies(reader_connection);
 	return ret;
 }
 
-#if 0
-void vaultaire_read_source(void *reader_connection, char *origin, char *source, uint64_t timestamp) {
-	vaultaire_read_sources(reader_connection, origin, &source, 1, timestamp)
+
+int vaultaire_read_source(void *reader_connection, char *origin, char *source,
+				vtimestamp_t start_timestamp,
+				vtimestamp_t end_timestamp) 
+{
+	return vaultaire_read_sources(reader_connection, origin, &source, 1,
+				start_timestamp,end_timestamp);
 }
-#endif
