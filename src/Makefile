@@ -11,7 +11,7 @@ BINDIR?=$(PREFIX)/bin
 
 
 .PHONY: default
-default: framecat burstnetsink readclient
+default: framecat burstnetsink
 
 # protobufc
 %.pb-c.c: ${PROTO_PATH}${@:.pb-c.c=.proto}
