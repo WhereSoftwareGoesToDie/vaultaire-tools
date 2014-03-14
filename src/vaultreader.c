@@ -8,7 +8,6 @@
 
 #include "vaultreader.h"
 
-
 /* Initialise the vaultaire reader
  *
  * returns the reader context on success otherwise returns NULL */
@@ -39,19 +38,27 @@ void * vaultaire_reader_connect(void * reader_context, char *server_hostname) {
  *
  * 	key=value:key=value:key=value:....
  *
- * The caller passes two arrays to fill, with max_kvpairs entries each
+ * *vsource will be allocated with _VSOURCE_ALLOC and must be later freed with
+ * _VSOURCE_FREE
+ *
  * The source string will have NULLs inserted to create individual strings
  * from the source, and pointers to the start of these strings will be placed
- * in the keys and values array.
+ * inside vsource->keys and vsource->values
  *
- * tokenise_source returns the amount of key/value pairs tokenised, up to max_kvpairs
+ * tokenise_source returns the amount of key/value pairs tokenised
+ * on success and on failure returns -1 and sets errno.
  */
-static int tokenise_source(char *source, int source_len, char **keys, char **values, int max_kvpairs) {
+static int tokenise_source(char *source, int source_len, vsource_t *vsource) {
+	char * keys_arr[MAX_SOURCE_KVPAIRS];
+	char * values_arr[MAX_SOURCE_KVPAIRS];
+	char **keys = keys_arr; 
+	char **values = values_arr;
+
 	char *endp = source + source_len;
 	char *sstart = source;
 	char nexttok = '=';
 	int kvpairs = 0;
-	for (;source < endp && kvpairs < max_kvpairs; ++source) {
+	for (;source < endp && kvpairs < MAX_SOURCE_KVPAIRS; ++source) {
 		if (*source == nexttok) {
 			*source = 0;
 			if (nexttok == '=') {
@@ -73,6 +80,13 @@ static int tokenise_source(char *source, int source_len, char **keys, char **val
 		*values = sstart; 
 		kvpairs++;
 	}
+
+	/* Now we know how many kv pairs there are, allocate and fill vsource */
+	if (! _VSOURCE_ALLOC(*vsource,kvpairs))
+		return -1;
+	memcpy(vsource->keys, keys_arr, sizeof(char *) * kvpairs);
+	memcpy(vsource->values, values_arr, sizeof(char *) * kvpairs);
+
 	return kvpairs;
 }
 
@@ -90,32 +104,40 @@ void vaultaire_reader_shutdown(void * reader_context) {
 		;
 }
 
+
+/* Send a request for sources to the vaultaire broker
+ * on failure returns -1 and sets errno
+ */
+int vaultaire_request_sources(void *reader_connection, char *origin, vsource_t **vsources, int nsources, vtimestamp_t timestamp) {
+	return -1;
+}
+
+
 /* Read from the vault
  * sets errno returns 0 on failure;
  */
-int vaultaire_read_sources(void *reader_connection, char *origin, char **sources, int nsources, uint32_t timestamp) {
+int vaultaire_read_sources(void *reader_connection, char *origin, char **sources, int nsources, vtimestamp_t timestamp) {
 	errno = EINVAL;
 	return 0;
 }
 
-
-int vaultaire_read_source(void *reader_connection, char *origin, char *source, uint32_t timestamp) {
-	char * keys[MAX_SOURCE_KVPAIRS];
-	char * values[MAX_SOURCE_KVPAIRS];
-	int nkvpairs = MAX_SOURCE_KVPAIRS;	
-
-	nkvpairs = tokenise_source(source, strnlen(source,MAX_SOURCE_LEN), keys, values, nkvpairs);
-	if (nkvpairs < 1) { errno = EINVAL; return -1; }
-
+int vaultaire_read_source(void *reader_connection, char *origin, char *source, vtimestamp_t timestamp) {
 	int i;
-	for (i=0; i<nkvpairs; ++i) {
-		printf("('%s' => '%s') ", keys[i], values[i]);
+	vsource_t vsource;
+
+
+	if (tokenise_source(source, strnlen(source,MAX_SOURCE_LEN), &vsource)  < 1)
+		{ errno = EINVAL; return -1; }
+
+
+	for (i=0; i<vsource.n_kvpairs; ++i) {
+		printf("('%s' => '%s') ", vsource.keys[i], vsource.values[i]);
 	}
 	return 0;
 }
 
 #if 0
-void vaultaire_read_source(void *reader_connection, char *origin, char *source, uint32_t timestamp) {
+void vaultaire_read_source(void *reader_connection, char *origin, char *source, uint64_t timestamp) {
 	vaultaire_read_sources(reader_connection, origin, &source, 1, timestamp)
 }
 #endif
