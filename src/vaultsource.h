@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "RequestMulti.pb-c.h"
+
 #define MAX_SOURCE_KVPAIRS	128
 #define	MAX_SOURCE_LEN		4096
 
@@ -25,7 +27,7 @@ typedef uint64_t vtimestamp_t;
 ((_vsource).values = malloc(sizeof(char *)*(_npairs))) != NULL)
 
 /* free key/value lists inside a vsource_t */
-#define _VSOURCE_FREE(_vsource) { free((_vsource).keys); free((_vsource_values)); }
+#define _VSOURCE_FREE(_vsource) { free((_vsource).keys); free((_vsource).values); }
 
 
 /* tokenize a source into key value pairs
@@ -46,4 +48,17 @@ typedef uint64_t vtimestamp_t;
  */
 int tokenise_source(char *source, int source_len, vsource_t *vsource);
 
+/**** Help with RequestSource protobufs ***/
+
+/* on success returns a new RequestSource protobuf filled with source information
+ * on error returns NULL and sets errno
+ * see also: free_requestsource_fb
+ */
+inline RequestSource * init_requestsource_pb(vsource_t *vsource, 
+				vtimestamp_t start_timestamp, 
+				vtimestamp_t end_timestamp);
+ 
+/* frees memory for a protobuf created with init_requestsource_pb
+ */
+inline void free_requestsource_pb(RequestSource *requestsource);
 #endif
