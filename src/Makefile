@@ -23,7 +23,7 @@ LDFLAGS:=${LDFLAGS} -lzmq -llz4
 burstnetsink: DataFrame.pb-c.c DataBurst.pb-c.c 
 
 LDFLAGS:=${LDFLAGS} -lzmq -llz4
-readclient: vaultreader.o readclient.o
+readclient: vaultsource.o vaultreader.o readclient.o
 
 .PHONY: clean
 clean:

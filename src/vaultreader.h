@@ -1,27 +1,7 @@
 #ifndef __VAULTREADER_H
 #define __VAULTREADER_H
 
-#define MAX_SOURCE_KVPAIRS	128
-#define	MAX_SOURCE_LEN		4096
-
-/***********/
-
-/* A vaultaire source, as keys and value pairs */
-typedef struct {
-	char **keys;
-	char **values;
-	int n_kvpairs;
-} vsource_t;
-
-/* Vaultaire timestamp is a uint64 in nanoseconds */
-typedef uint64_t vtimestamp_t;
-
-#define _VSOURCE_ALLOC(_vsource,_npairs) ( \
-((_vsource).n_kvpairs = _npairs) &&\
-((_vsource).keys = malloc(sizeof(char *)*(_npairs))) != NULL &&\
-((_vsource).values = malloc(sizeof(char *)*(_npairs))) != NULL)
-#define _VSOURCE_FREE(_vsource) { free((_vsource).keys); free((_vsource_values)); }
-
+#include "vaultsource.h"
 
 /**********/
 
