@@ -1,12 +1,17 @@
 CC=gcc
+INSTALL?=install
+PROTOCC=protoc-c
+
 CFLAGS=-g -Wall -O2
 LDFLAGS=-lprotobuf-c -lrt
-PROTOCC=protoc-c
 PROTO_PATH=../protobuf/
-INSTALL_DIR=/usr/local/bin
+
+PREFIX?=/usr/local
+BINDIR?=$(PREFIX)/bin
+
 
 .PHONY: default
-default: framecat burstnetsink 
+default: framecat burstnetsink
 
 # protobufc
 %.pb-c.c: ${PROTO_PATH}${@:.pb-c.c=.proto}
@@ -17,11 +22,15 @@ framecat: DataFrame.pb-c.c
 LDFLAGS:=${LDFLAGS} -lzmq -llz4
 burstnetsink: DataFrame.pb-c.c DataBurst.pb-c.c 
 
+LDFLAGS:=${LDFLAGS} -lzmq -llz4
+readclient: vaultsource.o vaultreader.o readclient.o
+
 .PHONY: clean
 clean:
 	rm -f framecat.o DataBurst.pb-c.[coh] DataFrame.pb-c.[coh] framecat burstnetsink
+	rm -f readclient readclient.o vaultreader.o
 
 
 install: framecat burstnetsink
-	cp framecat ${INSTALL_DIR}
-	cp burstnetsink ${INSTALL_DIR}
+	$(INSTALL) framecat $(DESTDIR)$(BINDIR)
+	$(INSTALL) burstnetsink $(DESTDIR)$(BINDIR)

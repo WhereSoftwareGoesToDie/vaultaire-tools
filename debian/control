@@ -1,0 +1,15 @@
+Source: vaultaire-tools
+Section: utils
+Priority: optional
+Maintainer: Anchor Systems <support@anchor.net.au>
+Build-Depends: debhelper (>= 8.0.0)
+Standards-Version: 3.9.4
+Homepage: https://github.com/anchor/vaultaire-tools
+Vcs-Git: git://github.com/anchor/vaultaire-tools.git
+Vcs-Browser: https://github.com/anchor/vaultaire-tools
+
+Package: vaultaire-tools
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libprotobuf-c0, libzmq4 (>= 4.0.0)
+Description: command-line tools to work with vaultaire data
+ 

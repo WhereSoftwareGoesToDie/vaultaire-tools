@@ -45,3 +45,9 @@ framegen:
 	files (it's not very smart with its memory handling, so this
 	is necessary to output more DataFrames than you have available
 	memory).
+
+broker\_thoughput:
+
+	Show throughput of frames passing through a broker to the ingestd
+	as well as latency for frames to be acked back to the client.
+
