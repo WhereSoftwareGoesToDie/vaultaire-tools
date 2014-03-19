@@ -1,3 +1,10 @@
+vaultaire-tools (1.1.0-1) unstable; urgency=low
+
+  * broker_throughput greatly improved
+  * tool to read marquise telemetry output via chateau
+
+ -- David Basden (Anchor Systems) <davidb@anchor.net.au>  Wed, 19 Mar 2014 17:29:44 +1100
+
 vaultaire-tools (1.0-1) unstable; urgency=low
 
   * Initial release
