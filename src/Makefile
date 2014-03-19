@@ -31,9 +31,10 @@ readclient: RequestMulti.pb-c.c vaultsource.o vaultreader.o readclient.o
 .PHONY: clean
 clean:
 	rm -f framecat.o DataBurst.pb-c.[coh] DataFrame.pb-c.[coh] framecat burstnetsink
-	rm -f readclient readclient.o vaultreader.o
+	rm -f readclient readclient.o vaultreader.o marquise_telemetry
 
 
 install: framecat burstnetsink
 	$(INSTALL) framecat $(DESTDIR)$(BINDIR)
 	$(INSTALL) burstnetsink $(DESTDIR)$(BINDIR)
+	$(INSTALL) marquise_telemetry $(DESTDIR)$(BINDIR)
