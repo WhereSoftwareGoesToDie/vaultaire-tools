@@ -51,3 +51,7 @@ broker\_thoughput:
 	Show throughput of frames passing through a broker to the ingestd
 	as well as latency for frames to be acked back to the client.
 
+marquise_telemetry:
+
+	Connect to the broker and watch any telemetry being sent through 
+	by marquise clients
