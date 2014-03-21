@@ -12,6 +12,7 @@ from time import *
 import os
 import fcntl
 
+
 class TimeAware(object):
     '''simple timing aware mixin
 
@@ -90,8 +91,10 @@ class ThroughputCounter(object):
         self.acked_burst_hist = TimeHistogram(600) 
         self.latency_hist = TimeHistogram(600) 
         self.ack_hist = TimeHistogram(600) 
+        self.outstanding_points = 0
         self.outstanding_bursts = {}  # burstid -> start timestamp,points
         self._reader_state = {}
+        self.using_marquised = set() # Hosts that relay through marquised
 
     def get_outstanding(self,last_n_seconds=[10,60]):
         total_burst_counts = map(self.point_hist.sum, last_n_seconds)
@@ -99,13 +102,13 @@ class ThroughputCounter(object):
         return [nbursts-nacks for nbursts,nacks in zip(total_burst_counts,total_ack_counts)]
     def get_total_outstanding_points(self):
         return sum(points for timestamp,points in self.outstanding_bursts.itervalues())
-    def get_points_per_seconds(self,over_seconds=[300,60,10]):
+    def get_points_per_seconds(self,over_seconds=[600,60,10]):
         return map(self.point_hist.mean, over_seconds)
-    def get_total_bursts(self,over_seconds=[300,60,10]):
+    def get_total_bursts(self,over_seconds=[600,60,10]):
         return map(self.burst_hist.mean, over_seconds)
-    def get_acks_per_second(self,over_seconds=[300,60,10]):
+    def get_acks_per_second(self,over_seconds=[600,60,10]):
         return map(self.ack_hist.mean, over_seconds)
-    def get_average_latencies(self,over_seconds=[300,60,10]):
+    def get_average_latencies(self,over_seconds=[600,60,10]):
         burst_counts = map(self.acked_burst_hist.sum, over_seconds)
         latency_sums = map(self.latency_hist.sum, over_seconds)
         return [latencysum/float(nbursts) if nbursts > 0 else 0 for latencysum,nbursts in zip(latency_sums,burst_counts)]
@@ -118,6 +121,7 @@ class ThroughputCounter(object):
         points = int(data['points'])
         timestamp = time()
         self.outstanding_bursts[msgtag] = timestamp,points
+        self.outstanding_points += points
         self.burst_hist.add(1)
         self.point_hist.add(points)
 
@@ -126,16 +130,32 @@ class ThroughputCounter(object):
             print >> sys.stderr, 'malformed ack info. ignoring'
             return
 
-        msgtag = data['identity']+data['message id']
-        if msgtag not in self.outstanding_bursts:
-            # got ack we didn't see the burst for. ignoring it.
+        if data['identity'][:10] == 'marquised:':
+            # ACK is coming back to marquised from the broker
+            host = data['identity'][10:]
+            self.using_marquised.add(host)
+        else:
+            host = data['identity']
+            if host in self.using_marquised:
+                # If a client is using marquised, that client will
+                # recieve an ack back from marquised immediately.
+                #
+                # We ignore this ack here, and wait for the one
+                # received by marquised
+                return 
+
+        msgtag = host+data['message id']
+        burst_timestamp,points = self.outstanding_bursts.pop(msgtag,(None,None))
+
+        if burst_timestamp == None:
+            # Got an ACK we didn't see the burst for. Ignoring it.
             return
 
-        burst_timestamp,points = self.outstanding_bursts.pop(msgtag)
         latency = time() - burst_timestamp
         self.ack_hist.add(points)
         self.acked_burst_hist.add(1)
         self.latency_hist.add(latency)
+        self.outstanding_points -= points
 
     def process_line(self, line):
         '''process a line of marquise telemetry
@@ -146,8 +166,16 @@ class ThroughputCounter(object):
         sample:
             fishhook.engineroom.anchor.net.au 1395212041732118000 8c087c0b collator_thread created_databurst frames = 1618 compressed_bytes = 16921
         ....
+            marquised:astrolabe.syd1.anchor.net.au 1395375377705126042 c87ba112 poller_thread rx_msg_from collate_thread
+        ....
             fishhook.engineroom.anchor.net.au 1395212082492520000 8c087c0b poller_thread rx_ack_from broker msg_id = 5553
 
+        CAVEAT: In the above, the marquised 'collate_thread' is actually the 
+        collate thread in a different process, received by marquised. We can
+        use the knowledge that this is happening to note that astrolabe is
+        passing stuff through marquised, and to ignore the ACK that marquised
+        sends back to the original client on astrolabe when tracking end-to-end
+        latency
         '''
         fields = line.strip().split()
         if len(fields) < 9:
@@ -156,10 +184,15 @@ class ThroughputCounter(object):
         if key == 'collator_thread created_databurst frames':
             identity,message_id,points = fields[0],fields[2],int(fields[7]) 
             self.process_burst({ 'identity': identity, 'message id': message_id, 'points': points })
-        if key == 'poller_thread rx_ack_from broker':
+        elif key == 'poller_thread rx_ack_from broker':
             identity,message_id = fields[0],fields[2]
             self.process_ack({ 'identity': identity, 'message id': message_id })
 
+        # Keep track of hosts using marquised. This is a bit bruteforce, but we need to catch this
+        # sort of thing early to not accidentally double-track ACKs
+        if fields[0][:10] == 'marquised:':
+            self.using_marquised.add(fields[0][10:])
+            
     def process_lines_from_stream(self):
         '''process any lines from our streams that are available to read'''
         while True:
@@ -172,7 +205,7 @@ class ThroughputCounter(object):
 
 
 class ThroughputPrinter(object):
-    def __init__(self, counter, outstream=sys.stdout, avgtimes=(300,60,10)):
+    def __init__(self, counter, outstream=sys.stdout, avgtimes=(600,60,10)):
         self.counter = counter
         self.outstream = outstream
         self.avgtimes = avgtimes
@@ -243,3 +276,4 @@ if __name__ == '__main__':
                                 writer.print_throughput ])
     event_loop.run_forever()
 
+# vim: set tabstop=4 expandtab:
