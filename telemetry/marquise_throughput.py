@@ -91,6 +91,10 @@ class ThroughputCounter(object):
         self.acked_burst_hist = TimeHistogram(600) 
         self.latency_hist = TimeHistogram(600) 
         self.ack_hist = TimeHistogram(600) 
+        self.defer_write_points_hist = TimeHistogram(600) 
+        self.defer_read_points_hist = TimeHistogram(600) 
+        self.timed_out_points_hist = TimeHistogram(600) 
+
         self.outstanding_points = 0
         self.outstanding_bursts = {}  # burstid -> start timestamp,points
         self._reader_state = {}
@@ -108,6 +112,12 @@ class ThroughputCounter(object):
         return map(self.burst_hist.mean, over_seconds)
     def get_acks_per_second(self,over_seconds=[600,60,10]):
         return map(self.ack_hist.mean, over_seconds)
+    def get_deferred_points_written_per_second(self,over_seconds=[600,60,10]):
+        return map(self.defer_write_points_hist.mean, over_seconds)
+    def get_timed_out_points_per_second(self,over_seconds=[600,60,10]):
+        return map(self.timed_out_points_hist.mean, over_seconds)
+    def get_deferred_points_read_per_second(self,over_seconds=[600,60,10]):
+        return map(self.defer_read_points_hist.mean, over_seconds)
     def get_average_latencies(self,over_seconds=[600,60,10]):
         burst_counts = map(self.acked_burst_hist.sum, over_seconds)
         latency_sums = map(self.latency_hist.sum, over_seconds)
@@ -124,7 +134,23 @@ class ThroughputCounter(object):
         self.outstanding_points += points
         self.burst_hist.add(1)
         self.point_hist.add(points)
-
+    def _msg_tag_from_data(self, data):
+        return (data['identity'].replace('marquised:',''))+data['message id']
+    def process_deferred_write(self, data):
+        msgtag = self._msg_tag_from_data(data)
+        burst_timestamp,points = self.outstanding_bursts.get(msgtag,(None,None))
+        if burst_timestamp is not None:
+            self.defer_write_points_hist.add(points)
+    def process_deferred_read(self, data):
+        msgtag = self._msg_tag_from_data(data)
+        burst_timestamp,points = self.outstanding_bursts.get(msgtag,(None,None))
+        if burst_timestamp is not None:
+            self.defer_read_points_hist.add(points)
+    def process_send_timeout(self, data):
+        msgtag = self._msg_tag_from_data(data)
+        burst_timestamp,points = self.outstanding_bursts.get(msgtag,(None,None))
+        if burst_timestamp is not None:
+            self.timed_out_points_hist.add(points)
     def process_ack(self, data):
         if not all(k in data for k in ('identity','message id')): 
             print >> sys.stderr, 'malformed ack info. ignoring'
@@ -178,20 +204,36 @@ class ThroughputCounter(object):
         latency
         '''
         fields = line.strip().split()
-        if len(fields) < 9:
-            return
+
+        if len(fields) < 4: return
+
+        # Keep track of hosts using marquised. This is a bit bruteforce, but we need to catch this
+        # sort of thing early to not accidentally double-track ACKs
+        #
+        if fields[0][:10] == 'marquised:':
+            self.using_marquised.add(fields[0][10:])
+
         key = ' '.join(fields[3:6])
         if key == 'collator_thread created_databurst frames':
             identity,message_id,points = fields[0],fields[2],int(fields[7]) 
             self.process_burst({ 'identity': identity, 'message id': message_id, 'points': points })
-        elif key == 'poller_thread rx_ack_from broker':
+
+        # Anything past here is only in the poller thread. Skips a lot of stuff
+        if fields[3] != 'poller_thread': return
+
+        if key == 'poller_thread rx_ack_from broker':
             identity,message_id = fields[0],fields[2]
             self.process_ack({ 'identity': identity, 'message id': message_id })
+        elif fields[4] == 'defer_to_disk':
+            identity,message_id = fields[0],fields[2]
+            data = { 'identity': identity, 'message id': message_id }
+            self.process_deferred_write({ 'identity': identity, 'message id': message_id })
+            if fields[5] == 'timeout_waiting_for_ack':
+                self.process_send_timeout({ 'identity': identity, 'message id': message_id })
+        elif fields[4] == 'read_from_disk':
+            identity,message_id = fields[0],fields[2]
+            self.process_deferred_read({ 'identity': identity, 'message id': message_id })
 
-        # Keep track of hosts using marquised. This is a bit bruteforce, but we need to catch this
-        # sort of thing early to not accidentally double-track ACKs
-        if fields[0][:10] == 'marquised:':
-            self.using_marquised.add(fields[0][10:])
             
     def process_lines_from_stream(self):
         '''process any lines from our streams that are available to read'''
@@ -214,10 +256,15 @@ class ThroughputPrinter(object):
     def print_header(self):
         colbreak = " " * 3
         header = '#'
-        header += "mean bursts per second".center(29) + colbreak
+        header += "mean points per second".center(29) + colbreak
         header += "mean acks per second".center(30) + colbreak
         header += "mean latency per point".center(30) + colbreak
+
+        header += "deferred points written/s".center(30) + colbreak
+        header += "deferred points read/s".center(30) + colbreak
+        header += "points timed out sending/s".center(30) + colbreak
         header += "unacked".rjust(10) + '\n'
+
 
         header += "#"
         header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)[1:]
@@ -225,9 +272,16 @@ class ThroughputPrinter(object):
         header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)
         header += colbreak
         header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)
+        header += colbreak
+        header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)
+        header += colbreak
+        header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)
+        header += colbreak
+        header += "".join(("(%dsec)" % secs).rjust(10) for secs in self.avgtimes)
         header += colbreak + "points".rjust(10) + '\n'
 
         header += '# ' + '-'*28 + colbreak + '-'*30 + colbreak + '-'*30 
+        header += colbreak + '-'*30 + colbreak + '-'*30 + colbreak + '-'*30
         header += colbreak + '-'*10 + '\n'
 
         self.outstream.write(header)
@@ -238,6 +292,9 @@ class ThroughputPrinter(object):
         acks_per_second = self.counter.get_acks_per_second(self.avgtimes)
         mean_latencies = self.counter.get_average_latencies(self.avgtimes)
         outstanding_points = self.counter.get_total_outstanding_points()
+        points_deferred_to_disk = self.counter.get_deferred_points_written_per_second(self.avgtimes)
+        points_read_from_disk = self.counter.get_deferred_points_read_per_second(self.avgtimes)
+        points_timed_out_sending = self.counter.get_timed_out_points_per_second(self.avgtimes)
 
         # RENDER ALL THE THINGS!
         out = ""
@@ -248,6 +305,16 @@ class ThroughputPrinter(object):
         out += "".join((" %9.2f" % b for b in acks_per_second))
         out += colbreak
         out += "".join((" %9.2f" % b for b in mean_latencies))
+
+        out += colbreak
+        out += "".join((" %9.2f" % b for b in points_deferred_to_disk))
+        out += colbreak
+        out += "".join((" %9.2f" % b for b in points_read_from_disk))
+        out += colbreak
+        out += "".join((" %9.2f" % b for b in points_timed_out_sending))
+
+        
+
         out += colbreak
         out += "%10d" % outstanding_points + '\n'
 
