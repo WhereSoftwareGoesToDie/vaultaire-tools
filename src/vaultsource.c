@@ -91,6 +91,7 @@ inline RequestSource * init_requestsource_pb(vsource_t *vsource, vtimestamp_t st
 	taglist = malloc(sizeof(RequestSource__Tag *) * vsource->n_kvpairs);
 	if (taglist == NULL) { free(requestsource); free(tags); return NULL; }
 	requestsource->source = taglist;
+	requestsource->n_source = vsource->n_kvpairs;
 
 	for (i=0; i< vsource->n_kvpairs; ++i) {
 		taglist[i] = tags+i;
