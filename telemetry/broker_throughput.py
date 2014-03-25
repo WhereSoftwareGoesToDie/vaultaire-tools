@@ -99,13 +99,13 @@ class ThroughputCounter(object):
         return [nbursts-nacks for nbursts,nacks in zip(total_burst_counts,total_ack_counts)]
     def get_total_outstanding_points(self):
         return sum(points for timestamp,points in self.outstanding_bursts.itervalues())
-    def get_points_per_seconds(self,over_seconds=[600,60,10]):
+    def get_points_per_seconds(self,over_seconds=[600,60,1]):
         return map(self.point_hist.mean, over_seconds)
-    def get_total_bursts(self,over_seconds=[600,60,10]):
+    def get_total_bursts(self,over_seconds=[600,60,1]):
         return map(self.burst_hist.mean, over_seconds)
-    def get_acks_per_second(self,over_seconds=[600,60,10]):
+    def get_acks_per_second(self,over_seconds=[600,60,1]):
         return map(self.ack_hist.mean, over_seconds)
-    def get_average_latencies(self,over_seconds=[600,60,10]):
+    def get_average_latencies(self,over_seconds=[600,60,1]):
         burst_counts = map(self.acked_burst_hist.sum, over_seconds)
         latency_sums = map(self.latency_hist.sum, over_seconds)
         return [latencysum/float(nbursts) if nbursts > 0 else 0 for latencysum,nbursts in zip(latency_sums,burst_counts)]
@@ -179,7 +179,7 @@ class ThroughputCounter(object):
 
 
 class ThroughputPrinter(object):
-    def __init__(self, counter, outstream=sys.stdout, avgtimes=(600,60,10)):
+    def __init__(self, counter, outstream=sys.stdout, avgtimes=(600,60,1)):
         self.counter = counter
         self.outstream = outstream
         self.avgtimes = avgtimes
@@ -188,7 +188,7 @@ class ThroughputPrinter(object):
     def print_header(self):
         colbreak = " " * 3
         header = '#'
-        header += "mean bursts per second".center(29) + colbreak
+        header += "mean points per second".center(29) + colbreak
         header += "mean acks per second".center(30) + colbreak
         header += "mean latency per point".center(30) + colbreak
         header += "unacked".rjust(10) + '\n'
