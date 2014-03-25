@@ -100,7 +100,7 @@ inline RequestSource * init_requestsource_pb(vsource_t *vsource, vtimestamp_t st
 		taglist[i]->value = vsource->values[i];
 	}
 	requestsource->alpha = start_timestamp;
-	requestsource->alpha = end_timestamp;
+	requestsource->omega = end_timestamp;
 
 	return requestsource;
 }
