@@ -100,25 +100,25 @@ class ThroughputCounter(object):
         self._reader_state = {}
         self.using_marquised = set() # Hosts that relay through marquised
 
-    def get_outstanding(self,last_n_seconds=[10,60]):
+    def get_outstanding(self,last_n_seconds=[600,60,1]):
         total_burst_counts = map(self.point_hist.sum, last_n_seconds)
         total_ack_counts = map(self.ack_hist.sum, last_n_seconds)
         return [nbursts-nacks for nbursts,nacks in zip(total_burst_counts,total_ack_counts)]
     def get_total_outstanding_points(self):
         return sum(points for timestamp,points in self.outstanding_bursts.itervalues())
-    def get_points_per_seconds(self,over_seconds=[600,60,10]):
+    def get_points_per_seconds(self,over_seconds=[600,60,1]):
         return map(self.point_hist.mean, over_seconds)
-    def get_total_bursts(self,over_seconds=[600,60,10]):
+    def get_total_bursts(self,over_seconds=[600,60,1]):
         return map(self.burst_hist.mean, over_seconds)
-    def get_acks_per_second(self,over_seconds=[600,60,10]):
+    def get_acks_per_second(self,over_seconds=[600,60,1]):
         return map(self.ack_hist.mean, over_seconds)
-    def get_deferred_points_written_per_second(self,over_seconds=[600,60,10]):
+    def get_deferred_points_written_per_second(self,over_seconds=[600,60,1]):
         return map(self.defer_write_points_hist.mean, over_seconds)
-    def get_timed_out_points_per_second(self,over_seconds=[600,60,10]):
+    def get_timed_out_points_per_second(self,over_seconds=[600,60,1]):
         return map(self.timed_out_points_hist.mean, over_seconds)
-    def get_deferred_points_read_per_second(self,over_seconds=[600,60,10]):
+    def get_deferred_points_read_per_second(self,over_seconds=[600,60,1]):
         return map(self.defer_read_points_hist.mean, over_seconds)
-    def get_average_latencies(self,over_seconds=[600,60,10]):
+    def get_average_latencies(self,over_seconds=[600,60,1]):
         burst_counts = map(self.acked_burst_hist.sum, over_seconds)
         latency_sums = map(self.latency_hist.sum, over_seconds)
         return [latencysum/float(nbursts) if nbursts > 0 else 0 for latencysum,nbursts in zip(latency_sums,burst_counts)]
@@ -247,7 +247,7 @@ class ThroughputCounter(object):
 
 
 class ThroughputPrinter(object):
-    def __init__(self, counter, outstream=sys.stdout, avgtimes=(600,60,10)):
+    def __init__(self, counter, outstream=sys.stdout, avgtimes=(600,60,1)):
         self.counter = counter
         self.outstream = outstream
         self.avgtimes = avgtimes
