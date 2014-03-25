@@ -64,11 +64,19 @@ int main(int argc, char **argv) {
 		printf("Source: '%s' in range %lu-%lu\n",
 				source,start_timestamp,end_timestamp);
 
-		int ret = vaultaire_read_source(reader_connection, origin, source, 
+		int ret = vaultaire_request_source(reader_connection, origin, source, 
 						start_timestamp, end_timestamp);
 		if (ret < 0) 
 			return perror("vaultaire_read_source"), 1;
 		free(source);
+
+		int n_read;
+		do {
+			vaultaire_response_t *responses;
+			n_read = vaultaire_read_responses(reader_connection, &responses);
+			/* ... process responses ... */
+			vaultaire_free_responses(responses);
+		} while (n_read > 0);
 	}
 
 

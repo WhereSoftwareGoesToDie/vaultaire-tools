@@ -28,7 +28,7 @@ void * vaultaire_reader_connect(void * reader_context, char *server_hostname) {
 	snprintf(socketname, 1024, "tcp://%s:5570/", server_hostname);
 	socketname[1023] = 0;
 
-	socket = zmq_socket(reader_context, ZMQ_REQ);
+	socket = zmq_socket(reader_context, ZMQ_DEALER);
 	if (socket == NULL) return NULL;
 	if (zmq_connect(socket,socketname)) return NULL;
 
@@ -55,7 +55,7 @@ void vaultaire_reader_shutdown(void * reader_context) {
  * on success returns 0
  * on failure returns -1 and sets errno
  */
-int vaultaire_request_sources(void *reader_connection, char *origin, vsource_t *vsources, int nsources, vtimestamp_t start_timestamp, vtimestamp_t end_timestamp) {
+int vaultaire_request_vsources(void *reader_connection, char *origin, vsource_t *vsources, int nsources, vtimestamp_t start_timestamp, vtimestamp_t end_timestamp) {
 	RequestMulti request;
 	RequestSource ** requestlist;
 	int i;
@@ -88,9 +88,16 @@ int vaultaire_request_sources(void *reader_connection, char *origin, vsource_t *
 	/* Send it out onto the wire */
 	int ret;
 	errno = 0;
+
 	do {
-		ret = zmq_send(reader_connection, buf, bufsiz,0);
+		ret = zmq_send(reader_connection, origin, strlen(origin), ZMQ_SNDMORE);
 	} while (ret == -1 && errno == EINTR);
+
+	if (ret >= 0) {
+		do {
+			ret = zmq_send(reader_connection, buf, bufsiz,0);
+		} while (ret == -1 && errno == EINTR);
+	}
 
 	/* Free the packed protobuf, submessages and list of submessages */
 	for (i=0; i<nsources; ++i)
@@ -102,11 +109,13 @@ int vaultaire_request_sources(void *reader_connection, char *origin, vsource_t *
 	return (ret == -1 ? -1 : 0);
 }
 
-int vaultaire_request_source(void *reader_connection, char *origin, vsource_t *vsource,vtimestamp_t start_timestamp, vtimestamp_t end_timestamp) {
-	return vaultaire_request_sources(reader_connection,origin, vsource, 1, start_timestamp, end_timestamp);
+int vaultaire_request_vsource(void *reader_connection, char *origin, vsource_t *vsource,vtimestamp_t start_timestamp, vtimestamp_t end_timestamp) {
+	return vaultaire_request_vsources(reader_connection,origin, vsource, 1, start_timestamp, end_timestamp);
 }
 
-int vaultaire_read_replies(void *reader_connection) {
+/* Read back any responses from the vault.
+ */
+int vaultaire_read_responses(void *reader_connection, vaultaire_response_t **responses) {
 	size_t rx_size;
 	zmq_msg_t msg;
 
@@ -117,16 +126,30 @@ int vaultaire_read_replies(void *reader_connection) {
 	if (rx_size == -1) 
 		return -1;
 
-	printf("read %lu bytes\n", rx_size);
+	fprintf(stderr,"read %lu bytes\n", rx_size);
 
-	if (zmq_msg_more(&msg)) {
-		printf("moar message\n");
+	*responses = malloc(sizeof(vaultaire_response_t));
+	if (*responses == NULL) {
+		zmq_msg_close(&msg);
 		return -1;
 	}
-	zmq_msg_close(&msg);
-	return 0;
+	(*responses)->msg = msg;
+	(*responses)->next = NULL;
+
+	return rx_size;
 }
 
+// FIXME: Stub just having a single item list of the zmq_message
+// until we pull apart the databurst
+void vaultaire_free_responses(vaultaire_response_t *responses) {
+	vaultaire_response_t *prev;
+	while (responses) {
+		prev = responses;
+		responses = prev->next;
+		zmq_msg_close(&(prev->msg));
+		free(prev);
+	}
+}
 
 /* 
  * Read multiple sources from the vault
@@ -135,7 +158,7 @@ int vaultaire_read_replies(void *reader_connection) {
  *
  * sets errno and returns -1 on failure
  */
-int vaultaire_read_sources(void *reader_connection, char *origin, 
+int vaultaire_request_sources(void *reader_connection, char *origin, 
 				char **sources, int nsources,
 				vtimestamp_t start_timestamp,
 				vtimestamp_t end_timestamp) {
@@ -161,7 +184,7 @@ int vaultaire_read_sources(void *reader_connection, char *origin,
 	}
 
 	/* Send the request to vaultaire for the sources*/
-	ret = vaultaire_request_sources(reader_connection, origin,
+	ret = vaultaire_request_vsources(reader_connection, origin,
 					vsource_list, nsources,
 					start_timestamp, end_timestamp);
 
@@ -171,18 +194,16 @@ int vaultaire_read_sources(void *reader_connection, char *origin,
 		_VSOURCE_FREE(vsource_list[i]);
 	free(vsource_list);
 
-	if (ret < 0) return ret;
+	if (ret < 0) return perror("vaultaire_request_vsources"),ret;
 
-	/* Read the responses */
-	ret = vaultaire_read_replies(reader_connection);
 	return ret;
 }
 
 
-int vaultaire_read_source(void *reader_connection, char *origin, char *source,
+int vaultaire_request_source(void *reader_connection, char *origin, char *source,
 				vtimestamp_t start_timestamp,
 				vtimestamp_t end_timestamp) 
 {
-	return vaultaire_read_sources(reader_connection, origin, &source, 1,
+	return vaultaire_request_sources(reader_connection, origin, &source, 1,
 				start_timestamp,end_timestamp);
 }

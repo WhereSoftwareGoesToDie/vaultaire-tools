@@ -11,7 +11,10 @@ BINDIR?=$(PREFIX)/bin
 
 
 .PHONY: default
-default: framecat burstnetsink marquise_telemetry
+default: clean all
+
+.PHONY: all
+all: framecat burstnetsink marquise_telemetry readclient
 
 # protobufc
 %.pb-c.c: ${PROTO_PATH}${@:.pb-c.c=.proto}
