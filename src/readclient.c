@@ -58,6 +58,9 @@ int main(int argc, char **argv) {
 
 	/* Go through the sources */
 	while (read_query_line(stdin,&source,&start_timestamp,&end_timestamp)) {
+		/* Start and stop timestamp are in nanoseconds */
+		start_timestamp *= 1000000000;
+		end_timestamp *= 1000000000;
 		printf("Source: '%s' in range %lu-%lu\n",
 				source,start_timestamp,end_timestamp);
 
