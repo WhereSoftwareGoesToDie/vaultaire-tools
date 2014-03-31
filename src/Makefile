@@ -11,7 +11,7 @@ BINDIR?=$(PREFIX)/bin
 
 
 .PHONY: default
-default: clean all
+default: all
 
 .PHONY: all
 all: framecat burstnetsink marquise_telemetry readclient
