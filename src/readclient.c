@@ -61,8 +61,6 @@ int main(int argc, char **argv) {
 		/* Start and stop timestamp are in nanoseconds */
 		start_timestamp *= 1000000000;
 		end_timestamp *= 1000000000;
-		printf("Source: '%s' in range %lu-%lu\n",
-				source,start_timestamp,end_timestamp);
 
 		int ret = vaultaire_request_source(reader_connection, origin, source, 
 						start_timestamp, end_timestamp);
@@ -74,6 +72,10 @@ int main(int argc, char **argv) {
 		do {
 			vaultaire_response_t *responses;
 			n_read = vaultaire_read_responses(reader_connection, &responses);
+			if (n_read < 0) {
+				perror("vaultaire_read_responses");
+				break;
+			}
 			/* ... process responses ... */
 			vaultaire_free_responses(responses);
 		} while (n_read > 0);

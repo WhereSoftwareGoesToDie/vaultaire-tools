@@ -3,13 +3,16 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
-
 #include <zmq.h>
+
+#include "RequestMulti.pb-c.h"
+#include "DataFrame.pb-c.h"
+#include "DataBurst.pb-c.h"
 
 #include "vaultreader.h"
 #include "vaultsource.h"
+#include "decompress.h"
 
-#include "RequestMulti.pb-c.h"
 
 /* Initialise the vaultaire reader
  *
@@ -136,6 +139,33 @@ int vaultaire_read_responses(void *reader_connection, vaultaire_response_t **res
 	(*responses)->msg = msg;
 	(*responses)->next = NULL;
 
+	/* Decompress databurst */
+	uint8_t *decomp_buffer = NULL;
+	size_t decomp_bufsize = 0;
+	int decompressed_size;
+
+	decompressed_size = decompress_databurst(zmq_msg_data(&msg),zmq_msg_size(&msg),
+					&decomp_buffer, &decomp_bufsize);
+
+	if (decompressed_size < 1) {
+		free(*responses);
+		zmq_msg_close(&msg);
+		return -1;
+	}
+
+	fprintf(stderr, "decompress to %d bytes\n",decompressed_size);
+
+	DataBurst *databurst = data_burst__unpack(NULL, decompressed_size, decomp_buffer);
+	if (databurst == NULL) {
+		fprintf(stderr, "DataBurst unpack fail\n");
+		free(*responses);
+		zmq_msg_close(&msg);
+		return -1;
+	}
+	data_burst__free_unpacked(databurst,NULL);
+
+	free(decomp_buffer);
+
 	return rx_size;
 }
 
@@ -187,7 +217,6 @@ int vaultaire_request_sources(void *reader_connection, char *origin,
 	ret = vaultaire_request_vsources(reader_connection, origin,
 					vsource_list, nsources,
 					start_timestamp, end_timestamp);
-
 
 	/* Free tokenised source data and vsource_list */
 	for (i=0; i<nsources; ++i) 

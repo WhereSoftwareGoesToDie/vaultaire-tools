@@ -29,7 +29,7 @@ LDFLAGS:=${LDFLAGS} -lzmq -llz4
 burstnetsink: DataFrame.pb-c.c DataBurst.pb-c.c 
 
 LDFLAGS:=${LDFLAGS} -lzmq -llz4
-readclient: RequestMulti.pb-c.c vaultsource.o vaultreader.o readclient.o
+readclient: RequestMulti.pb-c.c DataFrame.pb-c.c DataBurst.pb-c.c vaultsource.o decompress.o vaultreader.o readclient.o
 
 .PHONY: clean
 clean:
