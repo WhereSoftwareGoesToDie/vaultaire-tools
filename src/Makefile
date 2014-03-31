@@ -14,7 +14,7 @@ BINDIR?=$(PREFIX)/bin
 default: all
 
 .PHONY: all
-all: framecat burstnetsink marquise_telemetry readclient
+all: framecat burstnetsink marquise_telemetry
 
 # protobufc
 %.pb-c.c: ${PROTO_PATH}${@:.pb-c.c=.proto}
@@ -28,13 +28,10 @@ marquise_telemetry:
 LDFLAGS:=${LDFLAGS} -lzmq -llz4
 burstnetsink: DataFrame.pb-c.c DataBurst.pb-c.c 
 
-LDFLAGS:=${LDFLAGS} -lzmq -llz4
-readclient: RequestMulti.pb-c.c DataFrame.pb-c.c DataBurst.pb-c.c vaultsource.o decompress.o vaultreader.o readclient.o
-
 .PHONY: clean
 clean:
 	rm -f framecat.o DataBurst.pb-c.[coh] DataFrame.pb-c.[coh] framecat burstnetsink
-	rm -f readclient readclient.o vaultreader.o marquise_telemetry
+	rm -f marquise_telemetry
 
 
 install: framecat burstnetsink
