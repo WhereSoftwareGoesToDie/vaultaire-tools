@@ -131,13 +131,21 @@ int vaultaire_read_responses(void *reader_connection, vaultaire_response_t **res
 
 	fprintf(stderr,"read %lu bytes\n", rx_size);
 
+
 	*responses = malloc(sizeof(vaultaire_response_t));
 	if (*responses == NULL) {
 		zmq_msg_close(&msg);
 		return -1;
 	}
-	(*responses)->msg = msg;
 	(*responses)->next = NULL;
+
+	if (rx_size == 0) {
+		(*responses)->num_frames = 0;
+		(*responses)->frames = NULL;
+		(*responses)->_databurst = NULL;
+		zmq_msg_close(&msg);
+		return 0; /* No more to read */
+	}
 
 	/* Decompress databurst */
 	uint8_t *decomp_buffer = NULL;
@@ -147,24 +155,25 @@ int vaultaire_read_responses(void *reader_connection, vaultaire_response_t **res
 	decompressed_size = decompress_databurst(zmq_msg_data(&msg),zmq_msg_size(&msg),
 					&decomp_buffer, &decomp_bufsize);
 
+	zmq_msg_close(&msg); /* No longer need compressed data */
 	if (decompressed_size < 1) {
 		free(*responses);
-		zmq_msg_close(&msg);
 		return -1;
 	}
 
 	fprintf(stderr, "decompress to %d bytes\n",decompressed_size);
 
 	DataBurst *databurst = data_burst__unpack(NULL, decompressed_size, decomp_buffer);
+	free(decomp_buffer); /* No longer need packed data */
+
 	if (databurst == NULL) {
 		fprintf(stderr, "DataBurst unpack fail\n");
 		free(*responses);
-		zmq_msg_close(&msg);
 		return -1;
 	}
-	data_burst__free_unpacked(databurst,NULL);
-
-	free(decomp_buffer);
+	(*responses)->_databurst = databurst;
+	(*responses)->frames = databurst->frames;
+	(*responses)->num_frames = databurst->n_frames;
 
 	return rx_size;
 }
@@ -176,7 +185,8 @@ void vaultaire_free_responses(vaultaire_response_t *responses) {
 	while (responses) {
 		prev = responses;
 		responses = prev->next;
-		zmq_msg_close(&(prev->msg));
+		if (prev->_databurst != NULL) 
+			data_burst__free_unpacked(prev->_databurst,NULL);
 		free(prev);
 	}
 }

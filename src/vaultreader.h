@@ -1,13 +1,21 @@
 #ifndef __VAULTREADER_H
 #define __VAULTREADER_H
 
+#include "DataFrame.pb-c.h"
+#include "DataBurst.pb-c.h"
+
 #include "vaultsource.h"
 
-// FIXME: zmq.h is ONLY needed for zmq_msg_t. Remove it
-#include "zmq.h"
+
 typedef struct vaultaire_response {
-	zmq_msg_t msg;
+	// FIXME: Only need a ll if we are rebuilding the frames themselves
 	struct vaultaire_response *next;
+
+	DataFrame **frames;
+	size_t num_frames;
+
+	/* Internal to vaultreader. Messing with these may lead to badness */
+	DataBurst * _databurst;
 } vaultaire_response_t;
 
 /**********/
