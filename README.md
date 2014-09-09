@@ -1,3 +1,7 @@
+# ACHTUNG
+
+All of these tools are obsolete and won't work with Vaultaire >=2.0.
+
 vaultaire-tools
 ===============
 
